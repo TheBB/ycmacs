@@ -1,3 +1,6 @@
 [submodule "third-party/request"]
 	path = third-party/request
 	url = git@github.com:tkf/emacs-request.git
+[submodule "third-party/popup"]
+	path = third-party/popup
+	url = git@github.com:auto-complete/popup-el.git

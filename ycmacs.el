@@ -1,4 +1,5 @@
 (require 'json)
+(require 'popup)
 (require 'request)
 
 (random t)
@@ -11,7 +12,7 @@
   "Path to python2 interpreter"
   :type '(string) :group 'ycmacs)
 
-(defcustom ycm/path-to-ycmd "/home/eivindf/repos/ycmd/ycmd"
+(defcustom ycm/path-to-ycmd (expand-file-name "~/repos/ycmd/ycmd")
   "Path to the ycmd server (location of __main__.py)"
   :type '(string) :group 'ycmacs)
 
@@ -27,6 +28,7 @@
 (defvar ycm/ycmd-process)
 (defvar ycm/ycmacs-buffer)
 (defvar ycm/ycmd-port nil)
+(defvar ycm/popup nil)
 
 
 (defun ycm/log (str)
@@ -89,7 +91,15 @@
                  nil nil nil)))
 
 
-(defun ycm/send-request (handler json)
+(defun ycm/handle-completion (data)
+  (setq ycm/popup (popup-create (point) 10 10))
+  (popup-set-list ycm/popup '("Foo" "Bar" "Baz"))
+  (popup-draw ycm/popup)
+  ;; (ycm/log-line (format "success! %S" data)))
+  )
+
+
+(defun ycm/send-request (handler json parser callback)
   (let* ((json-data (json-encode json))
          (hmac-b64 (base64-encode-string (ycm/hmac-sha256 ycm/hmac-secret json-data) t)))
     (request
@@ -98,11 +108,8 @@
      :data json-data
      :headers `(("Content-Type" . "application/json")
                 ("X-Ycm-Hmac" . ,hmac-b64))
-     :parser 'buffer-string
-     :success (function*
-               (lambda (&key data &allow-other-keys)
-                 (ycm/log-line (format "success! %S" data))))
-     )))
+     :parser parser
+     :success callback)))
 
 
 (defun ycm/send-file-ready-to-parse (filename contents filetypes)
@@ -112,7 +119,8 @@
      :filepath ,filename
      :file_data ((,filename
                   . (:contents ,contents
-                     :filetypes ,filetypes))))))
+                     :filetypes ,filetypes))))
+   nil nil))
 
 
 (defun ycm/send-code-completion-request (filename contents filetypes line col)
@@ -123,7 +131,11 @@
      :column_num ,col
      :file_data ((,filename
                   . (:contents ,contents
-                     :filetypes ,filetypes))))))
+                     :filetypes ,filetypes))))
+   'json-read
+   (cl-function (lambda (&key data &allow-other-keys)
+                  (ycm/handle-completion data)))
+   ))
 
 
 (defun ycm/complete-at-point ()
@@ -179,12 +191,8 @@
 
 (defun ycm/after-hook ()
   (when (not ycm/ycmd-port)
-    (ycm/hello)))
-
-
-;; (ycm/send-file-ready-to-parse (or buffer-file-name (buffer-name))
-;;                               (buffer-string)
-;;                               '("unknown")))
+    (ycm/hello))
+  (make-local-variable 'ycm/popup))
 
 
 (define-minor-mode ycmacs-mode
