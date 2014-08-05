@@ -67,6 +67,7 @@
       (setq ycm/hmac-secret (string-to-unibyte (buffer-string))))))
 
 
+;; Thanks to Derek Upham for his implementation of HMAC-SHA1.
 (defun ycm/hmac-sha256 (key msg)
   "Computes the hex representation of the HMAC SHA256 algorithm given key and message."
   (when (multibyte-string-p key) (error "ycm/hmac-sha256: Key must be unibyte"))
