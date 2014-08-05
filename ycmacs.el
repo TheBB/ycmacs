@@ -134,6 +134,7 @@
                               ycm/path-to-ycmd
                               (format "--options_file=%s" temp-file)
                               (format "--idle_suicide_seconds=%d" ycm/server-idle-suicide-seconds))))
+    (set-process-query-on-exit-flag ycm/ycmd-process nil)
     (set-process-filter ycm/ycmd-process 'ycm/ycmd-filter)
 
     ;; Wait until it respons with a port or exits
