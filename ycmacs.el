@@ -31,9 +31,10 @@
 
 (defun ycm/log (str)
   (with-current-buffer ycm/ycmacs-buffer
-    (save-excursion
-      (goto-char (point-max))
-      (insert str))))
+    (goto-char (point-max))
+    (insert str)))
+
+(defun ycm/log-line (str) (ycm/log (format "%s\n" str)))
 
 
 (defun ycm/ycmd-filter (proc str)
@@ -44,7 +45,7 @@
     (let ((lines (split-string str "\n")))
       (while lines
         (when (not (string= "" (car lines)))
-          (ycm/log (format "--- %s\n" (car lines))))
+          (ycm/log-line (format "--- %s" (car lines))))
         (setq lines (cdr lines))))))
 
 
@@ -96,7 +97,12 @@
      :type "POST"
      :data json-data
      :headers `(("Content-Type" . "application/json")
-                ("X-Ycm-Hmac" . ,hmac-b64)))))
+                ("X-Ycm-Hmac" . ,hmac-b64))
+     :parser 'buffer-string
+     :success (function*
+               (lambda (&key data &allow-other-keys)
+                 (ycm/log-line (format "success! %S" data))))
+     )))
 
 
 (defun ycm/send-file-ready-to-parse (filename contents filetypes)
@@ -109,11 +115,34 @@
                      :filetypes ,filetypes))))))
 
 
+(defun ycm/send-code-completion-request (filename contents filetypes line col)
+  (ycm/send-request
+   "completions"
+   `(:filepath ,filename
+     :line_num ,line
+     :column_num ,col
+     :file_data ((,filename
+                  . (:contents ,contents
+                     :filetypes ,filetypes))))))
+
+
+(defun ycm/complete-at-point ()
+  (interactive)
+  (ycm/send-file-ready-to-parse (or buffer-file-name (buffer-name))
+                                (buffer-string)
+                                '("unknown"))
+  (ycm/send-code-completion-request (or buffer-file-name (buffer-name))
+                                    (buffer-string)
+                                    '("unknown")
+                                    (line-number-at-pos)
+                                    (current-column)))
+
+
 (defun ycm/hello ()
   (interactive)
 
   (setq ycm/ycmacs-buffer (get-buffer-create "*ycmacs*"))
-  (ycm/log "Welcome to ycmacs\n")
+  (ycm/log-line "Welcome to ycmacs")
 
   (let ((settings (ycm/get-default-settings))
         (temp-file (make-temp-file "ycmacs"))
@@ -143,24 +172,29 @@
 
     ;; Make sure the port is set to nil if we got an error
     (if (and ycm/ycmd-port (eq 'run (process-status ycm/ycmd-process)))
-        (ycm/log (format "ycmd running on port %d\n" ycm/ycmd-port))
-      (ycm/log "ycmd failed to start")
+        (ycm/log-line (format "ycmd running on port %d" ycm/ycmd-port))
+      (ycm/log-line "ycmd failed to start")
       (setq ycm/ycmd-port nil))))
 
 
 (defun ycm/after-hook ()
   (when (not ycm/ycmd-port)
-    (ycm/hello))
-  (ycm/send-file-ready-to-parse (or buffer-file-name (buffer-name))
-                                (buffer-string)
-                                '("unknown")))
+    (ycm/hello)))
+
+
+;; (ycm/send-file-ready-to-parse (or buffer-file-name (buffer-name))
+;;                               (buffer-string)
+;;                               '("unknown")))
 
 
 (define-minor-mode ycmacs-mode
   "Ycmacs documentation."
   :init-value nil
   :lighter " ycm"
-  :after-hook (ycm/after-hook))
+  :after-hook (ycm/after-hook)
+  :keymap (let ((map (make-sparse-keymap)))
+            (define-key map (kbd "C-a") 'ycm/complete-at-point)
+            map))
 
 
 (provide 'ycmacs)

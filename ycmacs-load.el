@@ -6,3 +6,4 @@
 (split-window-right)
 (other-window 1)
 (switch-to-buffer "*ycmacs*")
+(other-window 1)
