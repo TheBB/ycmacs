@@ -1,8 +1,8 @@
 EMACS = emacs
 FILES = ycmacs.el
-EVALS = --eval "(switch-to-buffer \"*Messages*\")" \
-	--eval "(require 'ycmacs)" \
-	--eval "(ycm/hello)"
+EVALS = --eval "(require 'ycmacs)" \
+	--eval "(ycm/hello)" \
+	--eval "(switch-to-buffer \"*ycmacs*\")"
 
 emacs:
 	$(EMACS) -Q -L . $(EVALS)
