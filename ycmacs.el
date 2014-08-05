@@ -55,7 +55,7 @@
     (with-temp-buffer
       (dotimes (i ycm/hmac-secret-length)
         (insert (elt chars (random n-chars))))
-      (setq ycm/hmac-secret (base64-encode-string (buffer-string))))))
+      (setq ycm/hmac-secret (buffer-string)))))
 
 (defun ycm/hello ()
   (interactive)
@@ -69,7 +69,7 @@
 
     ;; Generate an auth key, and save the augmented settings to a temp file
     (ycm/generate-hmac-secret)
-    (puthash "hmac_secret" ycm/hmac-secret settings)
+    (puthash "hmac_secret" (base64-encode-string ycm/hmac-secret) settings)
     (with-temp-file temp-file (insert (json-encode settings)))
 
     ;; Start ycmd and link the process to the filter function
