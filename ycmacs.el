@@ -3,6 +3,7 @@
 
 (random t)
 
+
 (defgroup ycmacs nil
   "Emacs YCM interface")
 
@@ -27,18 +28,25 @@
 (defvar ycm/ycmacs-buffer)
 (defvar ycm/ycmd-port nil)
 
+
 (defun ycm/log (str)
   (with-current-buffer ycm/ycmacs-buffer
     (save-excursion
       (goto-char (point-max))
       (insert str))))
 
+
 (defun ycm/ycmd-filter (proc str)
   (catch 'ready
     (when (string-match "\\`serving on http://\\([0-9]+\\.\\)\\{3\\}[0-9]+:[0-9]+" str)
       (setq ycm/ycmd-port (string-to-number (car (last (split-string str ":")))))
       (throw 'ready ""))
-    (ycm/log (format "--- %s" str))))
+    (let ((lines (split-string str "\n")))
+      (while lines
+        (when (not (string= "" (car lines)))
+          (ycm/log (format "--- %s\n" (car lines))))
+        (setq lines (cdr lines))))))
+
 
 (defun ycm/get-default-settings ()
   "Loads the YCM default settings file and parses it."
@@ -48,6 +56,7 @@
       (insert-file-contents fn)
       (json-read-from-string (buffer-string)))))
 
+
 (defun ycm/generate-hmac-secret ()
   "Generates an HMAC secret of length ycm/hmac-secret-length."
   (let ((chars "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%&^*()[]{},./<>?")
@@ -55,7 +64,50 @@
     (with-temp-buffer
       (dotimes (i ycm/hmac-secret-length)
         (insert (elt chars (random n-chars))))
-      (setq ycm/hmac-secret (buffer-string)))))
+      (setq ycm/hmac-secret (string-to-unibyte (buffer-string))))))
+
+
+(defun ycm/hmac-sha256 (key msg)
+  "Computes the hex representation of the HMAC SHA256 algorithm given key and message."
+  (when (multibyte-string-p key) (error "ycm/hmac-sha256: Key must be unibyte"))
+  (when (multibyte-string-p msg) (error "ycm/hmac-sha256: Msg must be unibyte"))
+  (let* ((block-size 64)
+         (outer-pad (make-vector block-size #x5c))
+         (inner-pad (make-vector block-size #x36))
+         (key-block (make-vector block-size 0)))
+    (when (< block-size (length key))
+      (setq key (secure-hash 'sha256 nil nil t)))
+    (dotimes (i (length key))
+      (aset key-block i (aref key i)))
+    (dotimes (i block-size)
+      (aset inner-pad i (logxor (aref inner-pad i) (aref key-block i)))
+      (aset outer-pad i (logxor (aref outer-pad i) (aref key-block i))))
+    (secure-hash 'sha256 (concat outer-pad
+                                 (secure-hash 'sha256 (concat inner-pad msg) nil nil t))
+                 nil nil nil)))
+
+
+(defun ycm/send-request (handler json)
+  (let* ((json-data (json-encode json))
+         (hmac-b64 (base64-encode-string (ycm/hmac-sha256 ycm/hmac-secret json-data) t)))
+    (ycm/log (format "%s\n" json-data))
+    (request
+     (format "http://localhost:%d/%s" ycm/ycmd-port handler)
+     :type "POST"
+     :data json-data
+     :headers `(("Content-Type" . "application/json")
+                ("X-Ycm-Hmac" . ,hmac-b64)))))
+
+
+(defun ycm/send-file-ready-to-parse (filename contents filetypes)
+  (ycm/send-request
+   "event_notification"
+   `(:event_name "FileReadyToParse"
+     :filepath ,filename
+     :file_data ((,filename
+                  . (:contents ,contents
+                     :filetypes ,filetypes))))))
+
 
 (defun ycm/hello ()
   (interactive)
@@ -69,7 +121,7 @@
 
     ;; Generate an auth key, and save the augmented settings to a temp file
     (ycm/generate-hmac-secret)
-    (puthash "hmac_secret" (base64-encode-string ycm/hmac-secret) settings)
+    (puthash "hmac_secret" (base64-encode-string ycm/hmac-secret t) settings)
     (with-temp-file temp-file (insert (json-encode settings)))
 
     ;; Start ycmd and link the process to the filter function
@@ -92,6 +144,10 @@
     (if (and ycm/ycmd-port (eq 'run (process-status ycm/ycmd-process)))
         (ycm/log (format "ycmd running on port %d\n" ycm/ycmd-port))
       (ycm/log "ycmd failed to start")
-      (setq ycm/ycmd-port nil))))
+      (setq ycm/ycmd-port nil)))
+
+  (ycm/send-file-ready-to-parse "/somewhere/test.js" "var i = 1;" '("javascript"))
+  )
+
 
 (provide 'ycmacs)
