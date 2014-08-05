@@ -91,7 +91,6 @@
 (defun ycm/send-request (handler json)
   (let* ((json-data (json-encode json))
          (hmac-b64 (base64-encode-string (ycm/hmac-sha256 ycm/hmac-secret json-data) t)))
-    (ycm/log (format "%s\n" json-data))
     (request
      (format "http://localhost:%d/%s" ycm/ycmd-port handler)
      :type "POST"
@@ -146,10 +145,22 @@
     (if (and ycm/ycmd-port (eq 'run (process-status ycm/ycmd-process)))
         (ycm/log (format "ycmd running on port %d\n" ycm/ycmd-port))
       (ycm/log "ycmd failed to start")
-      (setq ycm/ycmd-port nil)))
+      (setq ycm/ycmd-port nil))))
 
-  (ycm/send-file-ready-to-parse "/somewhere/test.js" "var i = 1;" '("javascript"))
-  )
+
+(defun ycm/after-hook ()
+  (when (not ycm/ycmd-port)
+    (ycm/hello))
+  (ycm/send-file-ready-to-parse (or buffer-file-name (buffer-name))
+                                (buffer-string)
+                                '("unknown")))
+
+
+(define-minor-mode ycmacs-mode
+  "Ycmacs documentation."
+  :init-value nil
+  :lighter " ycm"
+  :after-hook (ycm/after-hook))
 
 
 (provide 'ycmacs)
