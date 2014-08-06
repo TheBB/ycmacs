@@ -24,11 +24,17 @@
   "Length of HMAC secret"
   :type '(integer) :group 'ycmacs)
 
-(defvar ycm/hmac-secret)
-(defvar ycm/ycmd-process)
-(defvar ycm/ycmacs-buffer)
+(defcustom ycm/idle-delay 0.5
+  "How long to wait idle before starting completion."
+  :type '(number) :group 'ycmacs)
+
+(defvar ycm/hmac-secret nil)
+(defvar ycm/ycmd-process nil)
+(defvar ycm/ycmacs-buffer nil)
 (defvar ycm/ycmd-port nil)
-(defvar ycm/popup nil)
+(defvar ycm/timer nil)
+
+(defvar-local ycm/popup nil)
 
 
 (defun ycm/log (str)
@@ -95,7 +101,6 @@
   (setq ycm/popup (popup-create (point) 10 10))
   (popup-set-list ycm/popup '("Foo" "Bar" "Baz"))
   (popup-draw ycm/popup)
-  ;; (ycm/log-line (format "success! %S" data)))
   )
 
 
@@ -189,9 +194,34 @@
       (setq ycm/ycmd-port nil))))
 
 
+(defun ycm/pre-command ()
+  (when ycm/timer
+    (cancel-timer ycm/timer)
+    (setq ycm/timer nil)))
+
+
+(defun ycm/post-command ()
+  (setq ycm/timer (run-with-timer ycm/idle-delay nil
+                                  'ycm/trigger
+                                  (current-buffer) (selected-window)
+                                  (buffer-chars-modified-tick) (point))))
+
+
+(defun ycm/trigger (buf win tick pos)
+  (and (eq buf (current-buffer))
+       (eq win (selected-window))
+       (eq tick (buffer-chars-modified-tick))
+       (eq pos (point))
+       (eq last-command 'self-insert-command)
+       (ycm/log-line (format "trigger" last-command))
+       ))
+
+
 (defun ycm/after-hook ()
   (when (not ycm/ycmd-port)
     (ycm/hello))
+  (add-hook 'pre-command-hook 'ycm/pre-command)
+  (add-hook 'post-command-hook 'ycm/post-command)
   (make-local-variable 'ycm/popup))
 
 
@@ -200,9 +230,7 @@
   :init-value nil
   :lighter " ycm"
   :after-hook (ycm/after-hook)
-  :keymap (let ((map (make-sparse-keymap)))
-            (define-key map (kbd "C-a") 'ycm/complete-at-point)
-            map))
+  :keymap nil)
 
 
 (provide 'ycmacs)
