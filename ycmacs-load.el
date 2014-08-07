@@ -5,5 +5,5 @@
 
 (split-window-right)
 (other-window 1)
-(switch-to-buffer "*ycmacs*")
+(switch-to-buffer "*Messages*")
 (other-window 1)

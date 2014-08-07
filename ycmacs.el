@@ -42,11 +42,9 @@
 
 
 (defun ycm/log (str)
-  (with-current-buffer ycm/ycmacs-buffer
-    (goto-char (point-max))
-    (insert str)))
+  (message str))
 
-(defun ycm/log-line (str) (ycm/log (format "%s\n" str)))
+(defun ycm/log-line (str) (ycm/log str))
 
 
 (defun ycm/ycmd-filter (proc str)
