@@ -5,12 +5,3 @@ var f = function() {
     var foozoo = x + y;
     foo
 }
-
-
-
-
-
-
-
-
-

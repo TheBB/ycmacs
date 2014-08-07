@@ -215,7 +215,7 @@
                                (cdr (assq 'completions data))))
            )
       (setq ycm/popup (popup-create pt 10 10 :around t))
-      (popup-set-list ycm/popup candidates)
+      (popup-set-list ycm/popup (cdr candidates))
       (popup-draw ycm/popup)
       )
     ))
