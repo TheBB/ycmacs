@@ -35,6 +35,10 @@
 (defvar ycm/timer nil)
 
 (defvar-local ycm/popup nil)
+(defvar-local ycm/track-buffer nil)
+(defvar-local ycm/track-window nil)
+(defvar-local ycm/track-tick nil)
+(defvar-local ycm/track-point nil)
 
 
 (defun ycm/log (str)
@@ -97,13 +101,6 @@
                  nil nil nil)))
 
 
-(defun ycm/handle-completion (data)
-  (setq ycm/popup (popup-create (point) 10 10))
-  (popup-set-list ycm/popup '("Foo" "Bar" "Baz"))
-  (popup-draw ycm/popup)
-  )
-
-
 (defun ycm/send-request (handler json parser callback)
   (let* ((json-data (json-encode json))
          (hmac-b64 (base64-encode-string (ycm/hmac-sha256 ycm/hmac-secret json-data) t)))
@@ -115,44 +112,6 @@
                 ("X-Ycm-Hmac" . ,hmac-b64))
      :parser parser
      :success callback)))
-
-
-(defun ycm/send-file-ready-to-parse (filename contents filetypes)
-  (ycm/send-request
-   "event_notification"
-   `(:event_name "FileReadyToParse"
-     :filepath ,filename
-     :file_data ((,filename
-                  . (:contents ,contents
-                     :filetypes ,filetypes))))
-   nil nil))
-
-
-(defun ycm/send-code-completion-request (filename contents filetypes line col)
-  (ycm/send-request
-   "completions"
-   `(:filepath ,filename
-     :line_num ,line
-     :column_num ,col
-     :file_data ((,filename
-                  . (:contents ,contents
-                     :filetypes ,filetypes))))
-   'json-read
-   (cl-function (lambda (&key data &allow-other-keys)
-                  (ycm/handle-completion data)))
-   ))
-
-
-(defun ycm/complete-at-point ()
-  (interactive)
-  (ycm/send-file-ready-to-parse (or buffer-file-name (buffer-name))
-                                (buffer-string)
-                                '("unknown"))
-  (ycm/send-code-completion-request (or buffer-file-name (buffer-name))
-                                    (buffer-string)
-                                    '("unknown")
-                                    (line-number-at-pos)
-                                    (current-column)))
 
 
 (defun ycm/hello ()
@@ -201,20 +160,68 @@
 
 
 (defun ycm/post-command ()
-  (setq ycm/timer (run-with-timer ycm/idle-delay nil
-                                  'ycm/trigger
-                                  (current-buffer) (selected-window)
-                                  (buffer-chars-modified-tick) (point))))
+  (setq ycm/track-buffer (current-buffer))
+  (setq ycm/track-window (selected-window))
+  (setq ycm/track-tick (buffer-chars-modified-tick))
+  (setq ycm/track-point (point))
+  (setq ycm/timer (run-with-timer ycm/idle-delay nil 'ycm/trigger)))
 
 
-(defun ycm/trigger (buf win tick pos)
-  (and (eq buf (current-buffer))
-       (eq win (selected-window))
-       (eq tick (buffer-chars-modified-tick))
-       (eq pos (point))
-       (eq last-command 'self-insert-command)
-       (ycm/log-line (format "trigger" last-command))
-       ))
+(defun ycm/trigger ()
+  (when (and (eq ycm/track-buffer (current-buffer))
+             (eq ycm/track-window (selected-window))
+             (eq ycm/track-tick (buffer-chars-modified-tick))
+             (eq ycm/track-point (point))
+             (eq last-command 'self-insert-command))
+    (ycm/send-file-ready-to-parse (or buffer-file-name (buffer-name))
+                                  (buffer-string) '("unknown"))
+    (ycm/send-code-completion-request (or buffer-file-name (buffer-name))
+                                      (buffer-string) '("unknown")
+                                      (line-number-at-pos) (current-column))
+    ))
+
+
+(defun ycm/send-file-ready-to-parse (filename contents filetypes)
+  (ycm/send-request
+   "event_notification"
+   `(:event_name "FileReadyToParse"
+     :filepath ,filename
+     :file_data ((,filename
+                  . (:contents ,contents
+                     :filetypes ,filetypes))))
+   nil nil))
+
+
+(defun ycm/send-code-completion-request (filename contents filetypes line col)
+  (ycm/send-request
+   "completions"
+   `(:filepath ,filename
+     :line_num ,line
+     :column_num ,col
+     :file_data ((,filename
+                  . (:contents ,contents
+                     :filetypes ,filetypes))))
+   'json-read
+   (cl-function (lambda (&key data &allow-other-keys)
+                  (ycm/handle-completion data)))))
+
+
+(defun ycm/handle-completion (data)
+  (when (and (eq ycm/track-buffer (current-buffer))
+             (eq ycm/track-window (selected-window))
+             (eq ycm/track-tick (buffer-chars-modified-tick))
+             (eq ycm/track-point (point)))
+    (let* ((start-column (assq 'completion_start_column data))
+           (pt (- (+ (point) 5) (current-column) 1))
+           (candidates (mapcar (lambda (q) (cdr (car q)))
+                               (cdr (assq 'completions data))))
+           )
+      (setq ycm/popup (popup-create pt 10 10 :around t))
+      (popup-set-list ycm/popup candidates)
+      (popup-draw ycm/popup)
+      )
+    ))
+
 
 
 (defun ycm/after-hook ()
